@@ -1,0 +1,53 @@
+function [D,pvals,vec,numDWE] = DDT(corrmats,covariate,adjust,method_null,M)
+% INPUT
+%   corrmats:     an array containing correlation matrices for all subjects
+%   covariate:    design matrix (first column must be the group membership)
+%   adjust:       binary indicator to adjust (=1) or not adjust (=0) for
+%                 variables in covariate
+%   method_null:  'eDDT' (empirical threshold) or 'aDDT' (theoretical
+%                 threshold
+%   M:            number of HQS nulls to generate
+
+%OUTPUT
+%   D:            Difference network (ignore diagonal)
+%   pvals:        p value for the test at each node
+%   vec:          binary vector of nodes incident to a statistically 
+%                 significant number of brain regions
+%   numDWE:       number of DWEs incident to each node
+
+N=size(corrmats{1},1);%number of nodes 
+warning('off','all')
+%Load correlation matrices and transform
+ for i=1:size(corrmats,2)
+       data_pear=corrmats{i};
+       data_inter=.5*log10((1+data_pear)./(1-data_pear));
+       data_inter(eye(size(data_pear,1))==1)=1;
+       datum(i).data=data_inter;
+  end
+%Estimate observed difference network (Dtilde_obs)
+    [Dinter_new,Sign_new]=adjusted_pvalue_lin_table(datum,covariate,adjust);
+    Dinb=Dinter_new+Dinter_new';
+    Dinb(eye(N)==1)=ones(N,1);
+    Sign=Sign_new+Sign_new';
+    Sign(eye(N)==1)=zeros(N,1);
+    D=1-Dinb;% the difference network
+
+%Estimate the null networks
+if(method_null == 'eDDT')
+    [D_nulls,Un,thresh]=HQS_fun_nonpar(D,M);
+    display('eDDT')
+    display(thresh)
+else
+    [D_nulls,Un,thresh]=HQS_fun_theo(D,M);
+    display('aDDT')
+    display(thresh)
+end
+
+%DDT Testing
+    [ pvals_final,~,~,~] = nodediff_piesttest(D_nulls,D, real(thresh));
+    pvals=pvals_final;
+    vec=find(pvals<.05);
+    numDWE= nansum(D>thresh);
+    
+warning('on','all')
+end
